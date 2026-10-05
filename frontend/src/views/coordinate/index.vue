@@ -3,7 +3,7 @@
     <header class="page-head">
       <div>
         <h2>三维坐标管理</h2>
-        <p class="page-desc">维护测点记录，围绕测点编号、所属单位、坐标系、北坐标做登记、筛选与状态流转。</p>
+        <p class="page-desc">维护测点记录，围绕测点编号、所属单位、坐标系、高程范围做组合检索、校核留痕与状态流转。</p>
       </div>
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记测点记录</button>
@@ -25,9 +25,17 @@
     </p>
 
     <form class="filter-bar" @submit.prevent="reload">
-      <label v-for="field in filterFields" :key="field" class="filter-item">
+      <label v-for="field in textFilterFields" :key="field" class="filter-item">
         <span>{{ field }}</span>
         <input v-model="filters[field]" :placeholder="`按${field}检索`" />
+      </label>
+      <label class="filter-item">
+        <span>高程下限</span>
+        <input v-model="filters['高程下限']" placeholder="高程 ≥" />
+      </label>
+      <label class="filter-item">
+        <span>高程上限</span>
+        <input v-model="filters['高程上限']" placeholder="高程 ≤" />
       </label>
       <button class="btn" type="submit">查询</button>
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
@@ -43,7 +51,18 @@
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td v-for="column in columns" :key="column">
+            <button
+              v-if="column === '所属单位'"
+              class="link"
+              type="button"
+              title="按该单位筛选测点"
+              @click="filterByUnit(row)"
+            >
+              {{ row[column] ?? '—' }}
+            </button>
+            <template v-else>{{ row[column] || '—' }}</template>
+          </td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
@@ -51,6 +70,8 @@
               :key="action"
               class="link"
               type="button"
+              :disabled="!canOperate(row)"
+              :title="canOperate(row) ? '' : '跨单位测点仅可查看'"
               @click="runAction(action, row)"
             >
               {{ action }}
@@ -65,6 +86,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条三维坐标记录</span>
+      <span>当前值班单位：{{ session.homeUnit }}，跨单位测点仅可查看</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -80,18 +102,20 @@ import {
   runAction as applyAction,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
+import { useSessionStore } from '@/stores/session'
 
 const meta = moduleMeta('coordinate')
-const columns = ["测点编号", "所属单位", "坐标系", "北坐标", "东坐标", "高程值", "测量人", "记录状态"]
+const columns = ["测点编号", "所属单位", "坐标系", "北坐标", "东坐标", "高程值", "测量人", "记录状态", "最近校核", "最近重测"]
 const actions = ["提交校核", "确认校核", "安排重测"]
 const statuses = ["已测量", "已校核", "需重测", "已归档"]
 const stats = [{"label": "测点总数", "value": 0}, {"label": "已校核数", "value": 0}, {"label": "待校核数", "value": 0}]
 
+const session = useSessionStore()
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
-const filterFields = columns.slice(0, 3)
+const textFilterFields = ["测点编号", "所属单位", "坐标系"]
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -102,6 +126,15 @@ const statusSummary = computed(() =>
 function resetFilters() {
   filters.value = {}
   reload()
+}
+
+function filterByUnit(row: EntryRow) {
+  filters.value = { ...filters.value, 所属单位: String(row['所属单位'] ?? '') }
+  reload()
+}
+
+function canOperate(row: EntryRow) {
+  return String(row['所属单位'] ?? '') === session.homeUnit
 }
 
 function exportRows() {
