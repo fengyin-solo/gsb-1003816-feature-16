@@ -32,6 +32,11 @@ export type ActionResult = {
   message: string
 }
 
+export type ActionContext = {
+  operator?: string
+  unit?: string
+}
+
 export type OverviewResult = {
   cards: { label: string; value: number }[]
   modules: { name: string; created: number; pending: number; abnormal: number }[]

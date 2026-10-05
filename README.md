@@ -57,6 +57,7 @@ npm run build
 | 陶器整理 | `pottery` | 陶器标本 | 标本编号、出土单位、器形类别 |
 | 现场保护 | `conservation` | 保护处理记录 | 处理编号、保护对象、病害类型 |
 | 三维坐标 | `coordinate` | 测点记录 | 测点编号、所属单位、坐标系 |
+| 现场复测提醒 | `reminder`（嵌在考古调查页） | 复测提醒 | 提醒编号、关联测点、所属单位 |
 | 库房管理 | `storage` | 库房架位 | 架位编号、库房名称、存放器物类别 |
 | 耗材管理 | `material` | 发掘耗材 | 耗材编号、耗材名称、规格型号 |
 | 工地接待 | `visit` | 来访记录 | 来访编号、来访单位、来访人数 |
@@ -68,4 +69,8 @@ npm run build
 - 字段、状态、动作与流转目标集中在 `frontend/src/data/modules.ts`；示例数据在
   `frontend/src/data/seed.ts`。
 - 状态流转只允许在 `local-service.ts` 里改，页面组件不做业务判断。
+- 三维坐标模块的专用规则也集中在 `local-service.ts`：坐标系别名检索（别名表在
+  `src/data/coordinate-systems.ts`，表外老坐标系原样兼容）、高程范围过滤、同一测点别名重复只保留
+  标准名登记的一套、首次校核值冻结后不被重复校核覆盖、跨单位测点只读、安排重测自动向考古调查页的
+  现场复测提醒追加一条。
 - 想回到初始数据：清掉浏览器里 `field-archaeology-digital:entries` 这一项，或调用 `resetModule(模块)`。

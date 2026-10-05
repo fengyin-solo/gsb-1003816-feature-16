@@ -3,7 +3,9 @@
     <header class="page-head">
       <div>
         <h2>三维坐标管理</h2>
-        <p class="page-desc">维护测点记录，围绕测点编号、所属单位、坐标系、北坐标做登记、筛选与状态流转。</p>
+        <p class="page-desc">
+          维护测点记录，按测点编号、所属单位、坐标系（支持别名）与高程范围组合定位，列表标出首次校核值与最近校核、重测记录。
+        </p>
       </div>
       <div class="page-actions">
         <button class="btn primary" type="button" @click="openCreate">登记测点记录</button>
@@ -25,13 +27,40 @@
     </p>
 
     <form class="filter-bar" @submit.prevent="reload">
-      <label v-for="field in filterFields" :key="field" class="filter-item">
-        <span>{{ field }}</span>
-        <input v-model="filters[field]" :placeholder="`按${field}检索`" />
+      <label class="filter-item">
+        <span>测点编号</span>
+        <input v-model="filters['测点编号']" placeholder="按测点编号检索" />
+      </label>
+      <label class="filter-item">
+        <span>所属单位</span>
+        <input v-model="filters['所属单位']" placeholder="按所属单位检索" />
+      </label>
+      <label class="filter-item">
+        <span>坐标系</span>
+        <input
+          v-model="filters['坐标系']"
+          list="coordinate-system-options"
+          placeholder="按坐标系检索（支持别名，如 西安80）"
+        />
+        <datalist id="coordinate-system-options">
+          <option v-for="name in coordinateSystems" :key="name" :value="name" />
+        </datalist>
+      </label>
+      <label class="filter-item">
+        <span>高程下限</span>
+        <input v-model="filters['高程下限']" type="number" step="0.01" placeholder="最小高程值" />
+      </label>
+      <label class="filter-item">
+        <span>高程上限</span>
+        <input v-model="filters['高程上限']" type="number" step="0.01" placeholder="最大高程值" />
       </label>
       <button class="btn" type="submit">查询</button>
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
     </form>
+
+    <p class="unit-hint">
+      当前单位：{{ session.unit }}，其他单位测点仅可查看；同一测点命中多个坐标系别名时，列表只保留标准名登记的一套。
+    </p>
 
     <table class="data-table">
       <thead>
@@ -43,18 +72,21 @@
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
-          <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td v-for="column in columns" :key="column">{{ row[column] || '—' }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
-            <button
-              v-for="action in actions"
-              :key="action"
-              class="link"
-              type="button"
-              @click="runAction(action, row)"
-            >
-              {{ action }}
-            </button>
+            <span v-if="isCrossUnit(row)" class="readonly-tag">跨单位只读</span>
+            <template v-else>
+              <button
+                v-for="action in actions"
+                :key="action"
+                class="link"
+                type="button"
+                @click="runAction(action, row)"
+              >
+                {{ action }}
+              </button>
+            </template>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -65,6 +97,7 @@
 
     <footer class="page-foot">
       <span>共 {{ total }} 条三维坐标记录</span>
+      <span v-if="noticeMessage" class="notice-text">{{ noticeMessage }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -79,25 +112,33 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import { listCoordinateSystems } from '@/data/coordinate-systems'
 import type { EntryRow } from '@/data/types'
+import { useSessionStore } from '@/stores/session'
 
 const meta = moduleMeta('coordinate')
-const columns = ["测点编号", "所属单位", "坐标系", "北坐标", "东坐标", "高程值", "测量人", "记录状态"]
+const session = useSessionStore()
+const columns = ["测点编号", "所属单位", "坐标系", "北坐标", "东坐标", "高程值", "测量人", "记录状态", "首次校核值", "最近校核", "最近重测"]
 const actions = ["提交校核", "确认校核", "安排重测"]
 const statuses = ["已测量", "已校核", "需重测", "已归档"]
 const stats = [{"label": "测点总数", "value": 0}, {"label": "已校核数", "value": 0}, {"label": "待校核数", "value": 0}]
+const coordinateSystems = listCoordinateSystems()
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const noticeMessage = ref('')
 const filters = ref<Record<string, string>>({})
-const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+function isCrossUnit(row: EntryRow): boolean {
+  return !session.isOwnUnit(String(row['所属单位'] ?? ''))
+}
 
 function resetFilters() {
   filters.value = {}
@@ -114,11 +155,16 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  noticeMessage.value = ''
+  const result = applyAction(meta.key, Number(row.id), action, {
+    operator: session.operator,
+    unit: session.unit,
+  })
   if (!result.ok) {
     errorMessage.value = result.message
     return
   }
+  noticeMessage.value = result.message
   reload()
 }
 

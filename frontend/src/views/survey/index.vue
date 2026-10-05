@@ -63,6 +63,44 @@
       </tbody>
     </table>
 
+    <section class="reminder-section">
+      <header class="reminder-head">
+        <h3 class="reminder-title">现场复测提醒</h3>
+        <span class="legend-item">待复测 {{ pendingReminderCount }} 条</span>
+      </header>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th v-for="column in reminderColumns" :key="column">{{ column }}</th>
+            <th>当前状态</th>
+            <th>可执行动作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in reminders" :key="String(row.id)">
+            <td v-for="column in reminderColumns" :key="column">{{ row[column] || '—' }}</td>
+            <td>{{ row.status }}</td>
+            <td class="row-actions">
+              <button
+                v-if="row.status !== '已复测'"
+                class="link"
+                type="button"
+                @click="resolveReminder(row)"
+              >
+                标记复测
+              </button>
+              <span v-else class="readonly-tag">已核销</span>
+            </td>
+          </tr>
+          <tr v-if="!reminders.length">
+            <td :colspan="reminderColumns.length + 2" class="empty-state">
+              暂无现场复测提醒，三维坐标安排重测后会自动生成
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <footer class="page-foot">
       <span>共 {{ total }} 条考古调查记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
@@ -87,11 +125,18 @@ const actions = ["完成记录", "提交审核", "安排复查"]
 const statuses = ["调查中", "已记录", "已审核", "需复查"]
 const stats = [{"label": "调查次数", "value": 0}, {"label": "已审核记录", "value": 0}, {"label": "待复查记录", "value": 0}]
 
+const reminderMeta = moduleMeta('reminder')
+const reminderColumns = reminderMeta.fields
+
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const reminders = ref<EntryRow[]>([])
+const pendingReminderCount = computed(
+  () => reminders.value.filter((row) => String(row.status) === '待复测').length,
+)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -122,6 +167,20 @@ function runAction(action: string, row: EntryRow) {
   reload()
 }
 
+function loadReminders() {
+  reminders.value = listEntries(reminderMeta.key).items
+}
+
+function resolveReminder(row: EntryRow) {
+  errorMessage.value = ''
+  const result = applyAction(reminderMeta.key, Number(row.id), '标记复测')
+  if (!result.ok) {
+    errorMessage.value = result.message
+    return
+  }
+  loadReminders()
+}
+
 function reload() {
   errorMessage.value = ''
   try {
@@ -133,5 +192,8 @@ function reload() {
   }
 }
 
-onMounted(reload)
+onMounted(() => {
+  reload()
+  loadReminders()
+})
 </script>
